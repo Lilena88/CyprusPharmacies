@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		850C5EBA2880358C00068929 /* MapView+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850C5EB92880358C00068929 /* MapView+Extension.swift */; };
+		850C8A922B5FD0C2006B2312 /* PharmacyAnnotationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850C8A912B5FD0C2006B2312 /* PharmacyAnnotationView.swift */; };
+		850C8A942B5FD2C2006B2312 /* ClusterAnnotationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 850C8A932B5FD2C2006B2312 /* ClusterAnnotationView.swift */; };
 		852200CC28784D6A00C6F05C /* UIImage+Extension.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852200CB28784D6A00C6F05C /* UIImage+Extension.swift */; };
 		852F9D452802E93900AC37C9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F9D442802E93900AC37C9 /* AppDelegate.swift */; };
 		852F9D472802E93900AC37C9 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 852F9D462802E93900AC37C9 /* SceneDelegate.swift */; };
@@ -27,6 +29,8 @@
 
 /* Begin PBXFileReference section */
 		850C5EB92880358C00068929 /* MapView+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MapView+Extension.swift"; sourceTree = "<group>"; };
+		850C8A912B5FD0C2006B2312 /* PharmacyAnnotationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PharmacyAnnotationView.swift; sourceTree = "<group>"; };
+		850C8A932B5FD2C2006B2312 /* ClusterAnnotationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClusterAnnotationView.swift; sourceTree = "<group>"; };
 		852200CB28784D6A00C6F05C /* UIImage+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIImage+Extension.swift"; sourceTree = "<group>"; };
 		852F9D412802E93900AC37C9 /* NightPharmacies.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = NightPharmacies.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		852F9D442802E93900AC37C9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
@@ -96,6 +100,8 @@
 			children = (
 				852F9D482802E93900AC37C9 /* MapViewController.swift */,
 				85C8E92928439AC700454D1D /* MapViewPresenter.swift */,
+				850C8A912B5FD0C2006B2312 /* PharmacyAnnotationView.swift */,
+				850C8A932B5FD2C2006B2312 /* ClusterAnnotationView.swift */,
 			);
 			path = MapModule;
 			sourceTree = "<group>";
@@ -210,10 +216,12 @@
 			files = (
 				85E63CD5280303ED0091EBDF /* PharmacyModel.swift in Sources */,
 				85F6952A287466C200F84A22 /* AppearanceSources.swift in Sources */,
+				850C8A922B5FD0C2006B2312 /* PharmacyAnnotationView.swift in Sources */,
 				85F6952C28747F3C00F84A22 /* PopoverViewController.swift in Sources */,
 				850C5EBA2880358C00068929 /* MapView+Extension.swift in Sources */,
 				85C8E92A28439AC700454D1D /* MapViewPresenter.swift in Sources */,
 				856F59B92856043A008FEE7D /* DetailsViewController.swift in Sources */,
+				850C8A942B5FD2C2006B2312 /* ClusterAnnotationView.swift in Sources */,
 				85457821289A78C0003665E9 /* UIViewController+extensions.swift in Sources */,
 				852F9D492802E93900AC37C9 /* MapViewController.swift in Sources */,
 				852F9D452802E93900AC37C9 /* AppDelegate.swift in Sources */,

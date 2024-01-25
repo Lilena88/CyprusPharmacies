@@ -17,5 +17,7 @@ enum AppearanceSource {
     static let dateLabelSize: CGSize = CGSize(width: 100, height: 30)
 
     static let infoImage: UIImage? = UIImage(systemName: "info.circle", withConfiguration:  UIImage.SymbolConfiguration(pointSize: 16, weight: .light, scale: .large))
-    static let pharmacyPin: UIImage? = UIImage(systemName: "cross.circle", withConfiguration:  UIImage.SymbolConfiguration(pointSize: 15, weight: .light, scale: .large))?.withRenderingMode(.alwaysTemplate).colorized(color: .systemGreen)
+    static let pharmacyPin: UIImage? = UIImage(named: "pin")
+    
+    static let lightGreen: UIColor = UIColor(red: 0.46, green: 0.83, blue: 0.51, alpha: 1)
 }

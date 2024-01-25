@@ -62,6 +62,7 @@ class MapViewController: UIViewController, MapViewInputProtocol, UIGestureRecogn
         
         self.addChildVC()
         self.presenter.viewLoaded()
+        self.registerAnnotationViewClasses()
         self.detailVC.hideSelfView = self.hideDetailsVC
         self.setupButtons()
         self.setupMapView()
@@ -102,6 +103,11 @@ class MapViewController: UIViewController, MapViewInputProtocol, UIGestureRecogn
                 self.title = date
             }
         }
+    }
+    
+    private func registerAnnotationViewClasses() {
+        mapView.register(PharmacyAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultAnnotationViewReuseIdentifier)
+        mapView.register(ClusterAnnotationView.self, forAnnotationViewWithReuseIdentifier: MKMapViewDefaultClusterAnnotationViewReuseIdentifier)
     }
     
     // MARK: - Setup mapView and location
@@ -234,6 +240,9 @@ class MapViewController: UIViewController, MapViewInputProtocol, UIGestureRecogn
     @objc func zoomMap(_ sender: UITapGestureRecognizer) {
         let tapLocation = sender.location(in: self.mapView)
         let coordinate = self.mapView.convert(tapLocation, toCoordinateFrom: self.mapView)
+        zoom(to: coordinate)
+    }
+    private func zoom(to coordinate: CLLocationCoordinate2D) {
         let span = MKCoordinateSpan(latitudeDelta: self.mapView.region.span.latitudeDelta / 4,
                                     longitudeDelta: self.mapView.region.span.longitudeDelta / 4)
         let region = MKCoordinateRegion(center: coordinate, span: span)
@@ -312,17 +321,21 @@ class MapViewController: UIViewController, MapViewInputProtocol, UIGestureRecogn
 // MARK: - MKMapViewDelegate
 extension MapViewController: MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, didSelect view: MKAnnotationView) {
-        if let annotation = view.annotation as? PharmacyAnnotation {
-            self.detailVC.setPharmacy(data: annotation)
-            self.presenter.setDestination(annotation.coordinate)
-            self.detailVC.setDirection = self.getDirectionTapped
-            self.presentDetailVC()
+        if let view = view as? ClusterAnnotationView, let coordinate = view.annotation?.coordinate {
+            zoom(to: coordinate)
+        } else {
+            if let annotation = view.annotation as? PharmacyAnnotation {
+                self.detailVC.setPharmacy(data: annotation)
+                self.presenter.setDestination(annotation.coordinate)
+                self.detailVC.setDirection = self.getDirectionTapped
+                self.presentDetailVC()
 
-            guard var center = view.annotation?.coordinate else { return }
-            let lat = center.latitude - mapView.region.span.latitudeDelta * 0.15
-            center.latitude = lat
-            let region = MKCoordinateRegion(center: center, span: mapView.region.span)
-            mapView.setRegion(region, animated: true)
+                guard var center = view.annotation?.coordinate else { return }
+                let lat = center.latitude - mapView.region.span.latitudeDelta * 0.15
+                center.latitude = lat
+                let region = MKCoordinateRegion(center: center, span: mapView.region.span)
+                mapView.setRegion(region, animated: true)
+            }
         }
     }
     
@@ -333,20 +346,12 @@ extension MapViewController: MKMapViewDelegate {
     
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         guard !(annotation is MKUserLocation) else { return nil }
-        
-        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: "PharmacyPin")
-        if annotationView == nil {
-            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: "PharmacyPin")
-            annotationView?.canShowCallout = false
+        if annotation is MKClusterAnnotation {
+            return ClusterAnnotationView(annotation: annotation, reuseIdentifier: "reuseis")
         } else {
-            annotationView?.annotation = annotation
+            return PharmacyAnnotationView(annotation: annotation, reuseIdentifier: PharmacyAnnotationView.reuseID)
         }
-        guard let marker = annotationView as? MKMarkerAnnotationView else { return nil }
-        marker.glyphImage = AppearanceSource.pharmacyPin
-        marker.markerTintColor = .white
-        marker.glyphTintColor = UIColor(named: "greenPharm")
-        marker.glyphText = nil
-        return annotationView
+       
     }
    
     func mapView(_ mapView: MKMapView, didChange mode: MKUserTrackingMode, animated: Bool) {
