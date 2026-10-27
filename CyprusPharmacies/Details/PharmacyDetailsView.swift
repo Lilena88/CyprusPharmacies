@@ -1,0 +1,381 @@
+//
+//  PharmacyDetailsView.swift
+//  CyprusPharmacies
+//
+
+import CoreLocation
+import MapKit
+import SwiftUI
+import UIKit
+
+/// Content of the Details bottom sheet. Reports its natural height so the sheet can fit it.
+struct PharmacyDetailsView: View {
+    let pharmacy: Pharmacy
+    /// Straight-line distance from the user; nil when their position is unknown.
+    let distance: CLLocationDistance?
+    /// The user's position, known only with location access: the address row then points the way.
+    let userCoordinate: CLLocationCoordinate2D?
+    let onHeightChange: (CGFloat) -> Void
+    let onClose: () -> Void
+
+    @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @State private var isCallDialogShown = false
+    @State private var isDirectionsDialogShown = false
+    @State private var contentHeight: CGFloat = 0
+    @State private var buttonsHeight: CGFloat = 0
+    @State private var travelTime: TimeInterval?
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                content
+                    .padding(.horizontal, Margin.content)
+                    .padding(.top, Margin.content)
+                    .padding(.bottom, 8)
+                    .background(GeometryReader { proxy in
+                        Color.clear.preference(key: ContentHeightKey.self, value: proxy.size.height)
+                    })
+            }
+            .scrollBounceBehavior(.basedOnSize)
+
+            // Outside the scroll view, so Call and Directions stay on screen whatever the text size.
+            buttons
+                .padding(.horizontal, Margin.content)
+                .padding(.top, 8)
+                .padding(.bottom, Margin.content)
+                .background(GeometryReader { proxy in
+                    Color.clear.preference(key: ButtonsHeightKey.self, value: proxy.size.height)
+                })
+        }
+        // The sheet already floats above the home indicator: its safe area would add ~30 pt under the buttons; the bottom gap equals the side gap instead.
+        .ignoresSafeArea(.container, edges: .bottom)
+        .animation(.smooth, value: travelTime)
+        // Another pharmacy in the same sheet: the text cross-fades and the rows and the sheet change size smoothly.
+        .animation(.smooth, value: pharmacy.id)
+        .onPreferenceChange(ContentHeightKey.self) { contentHeight = $0; reportHeight() }
+        .onPreferenceChange(ButtonsHeightKey.self) { buttonsHeight = $0; reportHeight() }
+        .task(id: pharmacy.id) { await loadTravelTime() }
+    }
+
+    private func reportHeight() {
+        if contentHeight > 0 && buttonsHeight > 0 { onHeightChange(contentHeight + buttonsHeight) }
+    }
+
+    private var content: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            header
+
+            VStack(alignment: .leading, spacing: 0) {
+                let hasAddress = !pharmacy.address.isEmpty || !pharmacy.originalAddress.isEmpty
+                if hasAddress {
+                    AddressRow(address: pharmacy.address, greekAddress: pharmacy.originalAddress)
+                }
+                if !pharmacy.description.isEmpty {
+                    if hasAddress { RowDivider() }
+                    HoursRow(pharmacy: pharmacy)
+                }
+                if let distance {
+                    if hasAddress || !pharmacy.description.isEmpty { RowDivider() }
+                    DetailRow(icon: {
+                        // The arrow points to the pharmacy when the position is known.
+                        if let bearing {
+                            BearingIcon(bearing: bearing)
+                        } else {
+                            Image(systemName: "car")
+                        }
+                    }) {
+                        Text(Self.travelText(distance: distance, travelTime: travelTime))
+                    }
+                    .accessibilityElement(children: .combine)
+                }
+            }
+        }
+    }
+
+    private var header: some View {
+        Group {
+            // At accessibility sizes the name gets the full width, under the buttons.
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 12) {
+                        shareButton
+                        Spacer()
+                        closeButton
+                    }
+                    title(alignment: .leading)
+                }
+            } else {
+                // Share and Close on either side of the name, as in Maps sheets.
+                HStack(alignment: .top, spacing: 12) {
+                    shareButton
+                    title(alignment: .center)
+                    closeButton
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func title(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(pharmacy.name.isEmpty ? "Pharmacy" : pharmacy.name)
+                .font(.title2.bold())
+                .accessibilityAddTraits(.isHeader)
+            if let greekName = pharmacy.greekName {
+                Text(greekName)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .multilineTextAlignment(alignment == .center ? .center : .leading)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: Alignment(horizontal: alignment, vertical: .top))
+    }
+
+    /// Without a link to share, an empty slot of the same size keeps the name centered.
+    @ViewBuilder private var shareButton: some View {
+        Group {
+            if let url = pharmacy.appleMapsURL {
+                ShareLink(item: url, subject: Text(pharmacy.name), message: Text(shareMessage)) {
+                    CircleButtonLabel(systemImage: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Share")
+            } else {
+                Color.clear.frame(width: 44, height: 44).accessibilityHidden(true)
+            }
+        }
+        .headerButtonStyle()
+    }
+
+    private var closeButton: some View {
+        Button(action: onClose) {
+            CircleButtonLabel(systemImage: "xmark")
+        }
+        .accessibilityLabel("Close")
+        .headerButtonStyle()
+    }
+
+    private var shareMessage: String {
+        [pharmacy.name, pharmacy.address].filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    private var buttons: some View {
+        // Side by side, or one under the other at accessibility text sizes.
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+        return layout {
+            Button(action: call) {
+                Label("Call", systemImage: "phone.fill")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .disabled(pharmacy.phoneOptions.isEmpty)
+            .confirmationDialog("Call", isPresented: $isCallDialogShown, titleVisibility: .visible) {
+                ForEach(pharmacy.phoneOptions, id: \.self) { option in
+                    Button("\(option.kind.title): \(option.number)") {
+                        if let url = option.dialURL { openURL(url) }
+                    }
+                }
+            }
+
+            Button {
+                isDirectionsDialogShown = true
+            } label: {
+                Label("Directions", systemImage: "car.fill")
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .confirmationDialog("Directions", isPresented: $isDirectionsDialogShown, titleVisibility: .visible) {
+                ForEach(Navigator.allCases) { navigator in
+                    Button(navigator.rawValue) { navigator.open(to: pharmacy.coordinate) }
+                }
+            }
+        }
+        .lineLimit(1)
+        // Both buttons take the height of the taller one.
+        .fixedSize(horizontal: false, vertical: true)
+        .glassButtonStyle(prominent: true)
+        .controlSize(.large)
+    }
+
+    /// One number is dialled at once; with two the user picks.
+    private func call() {
+        let options = pharmacy.phoneOptions
+        if options.count == 1, let url = options[0].dialURL {
+            openURL(url)
+        } else {
+            isCallDialogShown = true
+        }
+    }
+
+    private func loadTravelTime() async {
+        travelTime = nil
+        guard distance != nil else { return }
+        let request = MKDirections.Request()
+        request.source = .forCurrentLocation()
+        request.destination = Self.mapItem(at: pharmacy.coordinate)
+        request.transportType = .automobile
+        // On failure the row keeps the straight-line distance. MapKit has no routing in Cyprus yet
+        // (FAILED_NO_RESULT, October 2026), so there this is the usual case.
+        travelTime = try? await MKDirections(request: request).calculateETA().expectedTravelTime
+    }
+
+    private static func mapItem(at coordinate: CLLocationCoordinate2D) -> MKMapItem {
+        if #available(iOS 26, *) {
+            return MKMapItem(location: CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude), address: nil)
+        }
+        return MKMapItem(placemark: MKPlacemark(coordinate: coordinate))
+    }
+
+    /// Direction to the pharmacy when the user's position is known.
+    private var bearing: CLLocationDirection? {
+        userCoordinate?.bearing(to: pharmacy.coordinate)
+    }
+
+    /// "2.4 km away" or, once MapKit answers, "2.4 km · 7 min by car".
+    static func travelText(distance: CLLocationDistance, travelTime: TimeInterval?) -> String {
+        let length = distance.roadText
+        guard let travelTime else { return "\(length) away" }
+        let minutes = max(1, Int((travelTime / 60).rounded()))
+        let time = Duration.seconds(minutes * 60).formatted(.units(allowed: [.hours, .minutes], width: .abbreviated))
+        return "\(length) · \(time) by car"
+    }
+}
+
+/// Width of the icon column; text and separators start after it.
+private let iconColumnWidth: CGFloat = 28
+private let iconSpacing: CGFloat = 14
+
+/// A row with an accent-colored icon on the left and primary text, as in Settings or Maps place cards.
+private struct DetailRow<Icon: View, Content: View>: View {
+    let icon: Icon
+    let content: Content
+
+    init(@ViewBuilder icon: () -> Icon, @ViewBuilder content: () -> Content) {
+        self.icon = icon()
+        self.content = content()
+    }
+
+    var body: some View {
+        // The icon sits on the first line, however many lines the text wraps to.
+        HStack(alignment: .firstTextBaseline, spacing: iconSpacing) {
+            icon
+                .font(.title3)
+                .foregroundStyle(.tint)
+                .frame(width: iconColumnWidth)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                content
+            }
+            .foregroundStyle(.primary)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+    }
+}
+
+extension DetailRow where Icon == Image {
+    init(systemImage: String, @ViewBuilder content: () -> Content) {
+        self.init(icon: { Image(systemName: systemImage) }, content: content)
+    }
+}
+
+/// Separator that starts under the text, not under the icon.
+private struct RowDivider: View {
+    var body: some View {
+        Divider().padding(.leading, iconColumnWidth + iconSpacing)
+    }
+}
+
+/// "Open now, until 11:00 PM" and the on-call hours; the raw description when it is in an unknown format.
+private struct HoursRow: View {
+    let pharmacy: Pharmacy
+
+    var body: some View {
+        let hours = DutyHours(description: pharmacy.description, dutyDay: pharmacy.date)
+        TimelineView(.everyMinute) { context in
+            DetailRow(systemImage: "clock") {
+                if let hours {
+                    Text(hours.headline(at: context.date))
+                    ForEach(hours.details(at: context.date), id: \.self) { line in
+                        Text(line)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                } else {
+                    Text(pharmacy.description)
+                }
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(Text("Hours"))
+            .accessibilityValue(Text(hours.map { ([$0.headline(at: context.date)] + $0.details(at: context.date)).joined(separator: ", ") }
+                                     ?? pharmacy.description))
+        }
+    }
+}
+
+/// English and Greek address; tapping offers "Copy address".
+private struct AddressRow: View {
+    let address: String
+    let greekAddress: String
+    @State private var copyCount = 0
+
+    var body: some View {
+        Menu {
+            if !address.isEmpty {
+                Button("Copy address", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = address
+                    copyCount += 1
+                }
+            }
+            if !greekAddress.isEmpty {
+                Button("Copy address in Greek", systemImage: "doc.on.doc") {
+                    UIPasteboard.general.string = greekAddress
+                    copyCount += 1
+                }
+            }
+        } label: {
+            DetailRow(systemImage: "mappin.and.ellipse") {
+                if !address.isEmpty {
+                    Text(address)
+                }
+                if !greekAddress.isEmpty {
+                    Text(greekAddress)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        // Plain style keeps the text in label colors instead of the accent color.
+        .buttonStyle(.plain)
+        // Copying shows nothing on screen, so it is confirmed by feel.
+        .sensoryFeedback(.success, trigger: copyCount)
+        .accessibilityLabel("Address, \([address, greekAddress].filter { !$0.isEmpty }.joined(separator: ", "))")
+        .accessibilityHint("Shows Copy address")
+    }
+}
+
+private struct ContentHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private struct ButtonsHeightKey: PreferenceKey {
+    static let defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = max(value, nextValue())
+    }
+}
+
+private extension View {
+    func headerButtonStyle() -> some View {
+        buttonStyle(.plain)
+            // Big enough to hit, without crowding the name at the largest sizes.
+            .dynamicTypeSize(...DynamicTypeSize.accessibility1)
+    }
+}
